@@ -120,23 +120,17 @@ int ptraceWriteString(pid_t pid, void *targetAddr, char *str)
 	ptraceWriteData(pid, targetAddr, (uint8_t *)str, strlen(str) + 1);
 }
 
-#if __LP64__
-int ptraceCallFunc(pid_t pid, void *funcAddr, long *params, uint32_t paramsNum, PT_REGS *regs)
-{
-
-}
-#else
 int ptraceCallFunc(pid_t pid, void *funcAddr, long *params, uint32_t paramsNum, PT_REGS *regs)
 {
 	int i;
 	int result = -1;
 	
-	// 前4个参数存入r0 ~ r3
-	for (i = 0; i < paramsNum && i < 4; i++) {
+	// 前8/4个参数存入r0 ~ r3
+	for (i = 0; i < paramsNum && i < PARAM_REGS_NUM; i++) {
 		regs->uregs[i] = params[i];
 	}
 
-	// 多余4个参数的，入栈
+	// 多余8/4个参数的，入栈
 	if (i < paramsNum) {
 		regs->ARM_sp -= (paramsNum - i) * sizeof(long);
 		ptraceWriteData(pid, (void *)regs->ARM_sp, (uint8_t *)&params[i], (paramsNum - i) *sizeof(long));
@@ -182,15 +176,10 @@ int ptraceCallFunc(pid_t pid, void *funcAddr, long *params, uint32_t paramsNum, 
 out:
 	return result;
 }
-#endif
 
 long ptraceRetValue(PT_REGS *regs)
 {
-#if __LP64__
-	return regs->regs[0];
-#else
 	return regs->ARM_r0;
-#endif
 }
 
 int ptraceGetRegs(pid_t pid, PT_REGS *regs)

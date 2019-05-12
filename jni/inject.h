@@ -19,11 +19,21 @@
 #define CPSR_T_MASK        ( 1u << 5 )
 
 #if __LP64__
+#define ARM_sp sp
+#define ARM_pc pc
+#define ARM_cpsr	pstate
+#define ARM_lr		regs[30]
+#define ARM_r0		regs[0]
 #define PTRACE_SETREGS PTRACE_SETREGSET
 #define PTRACE_GETREGS PTRACE_GETREGSET
 typedef struct user_pt_regs PT_REGS;
+#define uregs regs
+
+#define PARAM_REGS_NUM 8
 #else 
 typedef struct pt_regs PT_REGS;
+
+#define PARAM_REGS_NUM 4
 #endif
 
 int ptraceReadData(pid_t pid, void *targetAddr, uint8_t *data, size_t size);
