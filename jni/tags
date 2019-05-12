@@ -1,0 +1,39 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+APP_ABI	Application.mk	/^APP_ABI := x86 armeabi-v7a$/;"	m
+Debug	log.h	/^    Debug = 0,$/;"	e	enum:__anon1
+Error	log.h	/^    Error,$/;"	e	enum:__anon1
+Info	log.h	/^    Info,$/;"	e	enum:__anon1
+LOCAL_MODULE	Inject.mk	/^    LOCAL_MODULE := inject$/;"	m
+LOCAL_PATH	Inject.mk	/^LOCAL_PATH := $(call my-dir)$/;"	m
+LOCAL_SRC_FILES	Inject.mk	/^    LOCAL_SRC_FILES := inject.c	tools.c log.c$/;"	m
+LOGD	log.h	25;"	d
+LOGE	log.h	33;"	d
+LOGI	log.h	29;"	d
+LogLevel	log.h	/^} LogLevel;$/;"	t	typeref:enum:__anon1
+PT_REGS	inject.h	/^typedef struct pt_regs PT_REGS;$/;"	t	typeref:struct:pt_regs
+PT_REGS	inject.h	/^typedef struct user_pt_regs PT_REGS;$/;"	t	typeref:struct:user_pt_regs
+__INJECT_H__	inject.h	10;"	d
+__INJECT_LOG_H__	log.h	10;"	d
+__INJECT_TOOLS__	tools.h	10;"	d
+getPidFromName	tools.c	/^int getPidFromName(char *targetName)$/;"	f
+logLevel	log.c	/^LogLevel logLevel = Debug;$/;"	v
+logLevel	log.c	/^LogLevel logLevel = Error;$/;"	v
+logLevel	log.c	/^LogLevel logLevel = Info;$/;"	v
+main	inject.c	/^int main(int argc, char *argv[])$/;"	f
+main	test.c	/^int main()$/;"	f
+printLog	log.c	/^void printLog(LogLevel level, const char *fileName, int line, const char *func, \\$/;"	f
+ptraceAttach	inject.c	/^int ptraceAttach(pid_t pid)$/;"	f
+ptraceCallFunc	inject.c	/^int ptraceCallFunc(pid_t pid, void *funcAddr, long *params, uint32_t paramsNum, PT_REGS *regs)$/;"	f
+ptraceContinue	inject.c	/^int ptraceContinue(pid_t pid)$/;"	f
+ptraceDetach	inject.c	/^int ptraceDetach(pid_t pid)$/;"	f
+ptraceGetRegs	inject.c	/^int ptraceGetRegs(pid_t pid, PT_REGS *regs)$/;"	f
+ptraceReadData	inject.c	/^int ptraceReadData(pid_t pid, void *targetAddr, uint8_t *data, size_t size)$/;"	f
+ptraceRetValue	inject.c	/^long ptraceRetValue(PT_REGS *regs)$/;"	f
+ptraceSetRegs	inject.c	/^int ptraceSetRegs(pid_t pid, PT_REGS *regs)$/;"	f
+ptraceWriteData	inject.c	/^int ptraceWriteData(pid_t pid, void *targetAddr, uint8_t *data, size_t size)$/;"	f
+ptraceWriteString	inject.c	/^int ptraceWriteString(pid_t pid, void *targetAddr, char *str)$/;"	f
