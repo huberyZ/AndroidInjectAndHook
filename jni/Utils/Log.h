@@ -15,23 +15,23 @@
 #include <string.h>
 
 typedef enum {
-    Debug = 0,
-    Info,
-    Error,
-} LogLevel;
+    LogLevel_Debug = 0,
+    LogLevel_Info,
+    LogLevel_Error,
+} ELogLevel;
 
-void printLog(LogLevel level, const char *fileName, int line, const char *func, const char *format, ...);
+void PrintLog(ELogLevel eLevel, const char *pFileName, int iLine, const char *pFunc, const char *pFormat, ...);
 
 #define LOGD(format, args...) do {\
-    printLog(Debug, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
+    PrintLog(LogLevel_Debug, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
 } while(0)
 
 #define LOGI(format, args...) do {\
-    printLog(Info, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
+    PrintLog(LogLevel_Info, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
 } while (0)
 
 #define LOGE(format, args...) do {\
-    printLog(Error, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
+    PrintLog(LogLevel_Error, __FILE__, __LINE__, __FUNCTION__, format, ##args); \
 } while (0)
 
 //#if ANDROID_LOG

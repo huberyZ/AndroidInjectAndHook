@@ -14,7 +14,7 @@
 #include <sys/wait.h>
 #include <asm/ptrace.h>
 
-#include "log.h"
+#include "../Utils/Log.h"
 
 #define CPSR_T_MASK        ( 1u << 5 )
 
@@ -36,15 +36,15 @@ typedef struct pt_regs PT_REGS;
 #define PARAM_REGS_NUM 4
 #endif
 
-int ptraceReadData(pid_t pid, void *targetAddr, uint8_t *data, size_t size);
-int ptraceWriteData(pid_t pid, void *targetAddr, uint8_t *data, size_t size);
-int ptraceWriteString(pid_t pid, void *targetAddr, char *str);
-int ptraceCallFunc(pid_t pid, void *funcAddr, long *params, uint32_t paramsNum, PT_REGS *regs);
-int ptraceGetRegs(pid_t pid, PT_REGS *regs);
-int ptraceSetRegs(pid_t pid, PT_REGS *regs);
-int ptraceContinue(pid_t pid);
-int ptraceAttach(pid_t pid);
-int ptraceDetach(pid_t pid);
-long ptraceRetValue(PT_REGS *regs);
+int PtraceReadData(pid_t pid, void *pTargetAddr, uint8_t *pData, size_t lSize);
+int PtraceWriteData(pid_t pid, void *pTargetAddr, uint8_t *pData, size_t lSize);
+int PtraceWriteString(pid_t pid, void *pTargetAddr, char *pStr);
+int PtraceCallFunc(pid_t pid, void *pFuncAddr, long *pParams, uint32_t wParamsNum, PT_REGS *pRegs);
+int PtraceGetRegs(pid_t pid, PT_REGS *pRegs);
+int PtraceSetRegs(pid_t pid, PT_REGS *pRegs);
+int PtraceContinue(pid_t pid);
+int PtraceAttach(pid_t pid);
+int PtraceDetach(pid_t pid);
+long PtraceRetValue(PT_REGS *pRegs);
 
 #endif

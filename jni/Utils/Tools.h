@@ -14,9 +14,9 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#include "log.h"
+#include "Log.h"
 
-int getPidFromName(char *targetName);
+int GetPidFromName(char *pTargetName);
 
 
 #endif
