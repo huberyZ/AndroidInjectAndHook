@@ -18,6 +18,10 @@
 
 #define CPSR_T_MASK        ( 1u << 5 )
 
+#ifndef PAGE_SIZE
+#define PAGE_SIZE	4096
+#endif
+
 #if __LP64__
 #define ARM_sp sp
 #define ARM_pc pc

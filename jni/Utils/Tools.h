@@ -17,6 +17,7 @@
 #include "Log.h"
 
 int GetPidFromName(char *pTargetName);
-
+long GetModuleBaseAddr(pid_t pid, char *pModuleName);
+int IsExecAddr(unsigned long ulAddr);
 
 #endif

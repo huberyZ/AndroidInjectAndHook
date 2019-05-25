@@ -56,3 +56,76 @@ out:
 	return iPid;
 }
 
+long GetModuleBaseAddr(pid_t pid, char *pModuleName)
+{
+	long lModuleBase = -1;
+	char pMaps[1024] = {0};
+	char pLines[4096] = {0};
+	FILE *pfMaps = NULL;
+
+	if (pModuleName == NULL) {
+		LOGE("param pModuleName is null.\n");
+		goto out;
+	}
+
+	if (pid < 0) {
+		sprintf(pMaps, "/proc/self/maps");
+	}
+	else {
+		sprintf(pMaps, "/proc/%d/maps", pid);
+	}
+
+	pfMaps = fopen(pMaps, "r");
+	if (pfMaps == NULL) {
+		LOGE("fopen: %s. \n", strerror(errno));
+		goto out;
+	}
+
+	while(fgets(pLines, sizeof(pLines), pfMaps) != NULL) {
+		if (strstr(pLines, pModuleName)) {
+			sscanf(pLines, "%l", lModuleBase);
+			goto out;
+		}
+
+		memset(pLines, 0, sizeof(pLines));
+	}
+
+out:
+	if (pfMaps) {
+		fclose(pfMaps);
+	}
+	return lModuleBase;
+}
+
+int IsExecAddr(unsigned long ulAddr)
+{
+	FILE *pfMaps = NULL;
+	char pMaps[1024] = {0};
+	char pLines[4096] = {0};
+	unsigned long ulStartAddr = 0;
+	unsigned long ulEndAddr = 0;
+	int iRet = -1;
+
+	pfMaps = fopen("/proc/self/maps", "r");
+	if (pfMaps == NULL) {
+		LOGE("fopen: %s. \n", strerror(errno));
+		goto out;
+	}
+
+	while (fgets(pLines, sizeof(pLines), pfMaps) != NULL) {
+		sscanf(pLines, "%lu-%lu", ulStartAddr, ulEndAddr);
+		if (ulAddr > ulStartAddr && ulAddr < ulEndAddr) {
+			iRet = 0;
+			break;
+		}
+
+		memset(pLines, 0, sizeof(pLines));
+	}
+	
+out:
+	if (pfMaps) {
+		fclose(pfMaps);
+	}
+	return iRet;
+}
+
