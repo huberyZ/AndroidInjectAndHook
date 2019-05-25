@@ -56,6 +56,10 @@ out:
 	return iPid;
 }
 
+/*
+ * 获取进程中某个模块的加载基址
+ * pid为负数，则从本进程找
+ */
 long GetModuleBaseAddr(pid_t pid, char *pModuleName)
 {
 	long lModuleBase = -1;
@@ -83,7 +87,7 @@ long GetModuleBaseAddr(pid_t pid, char *pModuleName)
 
 	while(fgets(pLines, sizeof(pLines), pfMaps) != NULL) {
 		if (strstr(pLines, pModuleName)) {
-			sscanf(pLines, "%l", lModuleBase);
+			sscanf(pLines, "%l", &lModuleBase);
 			goto out;
 		}
 
@@ -126,6 +130,34 @@ out:
 	if (pfMaps) {
 		fclose(pfMaps);
 	}
+	return iRet;
+}
+
+int ChangePageAttr(void *pAddr, size_t size, int port)
+{
+	int iRet = -1;
+	unsigned long ulPageStartAddr = 0;
+	unsigned long ulPageNum = 0;
+	
+	if ((unsigned long)pAddr & (PAGE_SIZE - 1)) {
+		ulPageStartAddr = (unsigned long)pAddr & ~(PAGE_SIZE - 1);
+		ulPageNum = size / PAGE_SIZE + 1;
+	}
+	else {
+		ulPageStartAddr = (unsigned long)pAddr;
+		ulPageStartAddr = size / PAGE_SIZE;
+	}
+
+	unsigned long i;
+	for (i = 0; i < ulPageNum; i++) {
+		if (mprotect(ulPageStartAddr + i * PAGE_SIZE, PAGE_SIZE, prot) < 0) {
+			LOGE("mprotect(): %s\n", strerror(errno));
+			goto out;
+		}	
+	}
+
+	iRet = 0;
+out:
 	return iRet;
 }
 

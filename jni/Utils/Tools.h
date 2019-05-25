@@ -19,5 +19,6 @@
 int GetPidFromName(char *pTargetName);
 long GetModuleBaseAddr(pid_t pid, char *pModuleName);
 int IsExecAddr(unsigned long ulAddr);
+int ChangePageAttr(void *pAddr, size_t size, int port);
 
 #endif
