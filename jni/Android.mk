@@ -13,6 +13,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/Utils
 SRC_FILES += $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/*.c))
 SRC_FILES += $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/Inject/*.c))
 SRC_FILES += $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/InlineHook/*.c))
+SRC_FILES += $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/InlineHook/*.s))
 SRC_FILES += $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/Utils/*.c))
 
 LOCAL_SRC_FILES += $(SRC_FILES)

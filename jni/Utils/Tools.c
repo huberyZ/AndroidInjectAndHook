@@ -150,7 +150,7 @@ int ChangePageAttr(void *pAddr, size_t size, int port)
 
 	unsigned long i;
 	for (i = 0; i < ulPageNum; i++) {
-		if (mprotect(ulPageStartAddr + i * PAGE_SIZE, PAGE_SIZE, prot) < 0) {
+		if (mprotect(ulPageStartAddr + i * PAGE_SIZE, PAGE_SIZE, port) < 0) {
 			LOGE("mprotect(): %s\n", strerror(errno));
 			goto out;
 		}	

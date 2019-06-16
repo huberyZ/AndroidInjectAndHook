@@ -1,0 +1,226 @@
+/*================================================================
+*   Copyright (C) 2019 Sangfor Ltd. All rights reserved.
+*   
+*   @File name：InlineHookArm32.c
+*   @Author: nathan
+*   @Date: 2019年05月19日
+================================================================*/
+
+#include "InlineHookArm32.h"
+
+int HookArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+	int iRet = -1;
+
+	if (pstInlineHookInfo == NULL) {
+		LOGE("pstInlineHookInfo is NULL.\n");
+		goto err;
+	}
+
+	if (InitHookArm32(pstInlineHookInfo)) {
+		LOGE("init hookarm err.\n");
+		goto err;
+	}
+
+    if (BuildHookTargetArm32(pstInlineHookInfo)) {
+        LOGE("BuildHookTarget err.\n");
+        goto err;
+    }
+	
+	iRet = 0;
+err:
+	return iRet;
+}
+
+int BuildHookTargetArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+    int iRet = -1;
+
+    if (pstInlineHookInfo == NULL) {
+        LOGE("pstInlineHookInfo is NULL.\n");
+        goto err;
+    }
+
+    if (ChangePageAttr(pstInlineHookInfo->pHookAddr, 12, PROT_READ|PROT_WRITE|PROT_EXEC)) {
+        LOGE("change page property failed.\n");
+        goto err;
+    }
+
+    if (BuildJumpInstArm32(pstInlineHookInfo->pHookAddr, pstInlineHookInfo->pStubAddr)) {
+        LOGE("BuildJumpInstArm32 failed.\n");
+        goto err;
+    }
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
+int BuildStubArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+    int iRet = -1;
+
+    if (pstInlineHookInfo == NULL) {
+        LOGE("pstInlineHookInfo is NULL\n");
+        goto err;
+    }
+    
+    void *pShellcodeStartArm32 = &_shellcode_start_arm32;
+    void *pShellcodeEndArm32 = &_shellcode_end_arm32;
+    void *pHookstubFunctionAddrArm32 = &_hookstub_function_addr_arm32;
+    void *pOldFunctionAddrArm32 = &_old_function_addr_arm32;
+
+    size_t ulShellCodeLength = pShellcodeEndArm32 - pShellcodeStartArm32;
+
+    // 申请一块内存，用于构造shellcode
+    void *pNewShellcode = malloc(ulShellCodeLength);
+    if (pNewShellcode == NULL) {
+        LOGE("shellcode malloc failed.\n");
+        goto err;
+    }
+    memcpy(pNewShellcode, pShellcodeStartArm32, ulShellCodeLength);
+
+    // 更改页属性，改成可读可写可执行
+    if (ChangePageAttr(pNewShellcode, ulShellCodeLength, PROT_READ|PROT_WRITE|PROT_EXEC)) {
+        LOGE("ChangePageAttr shellcode failed.\n");
+        goto err;
+    }
+
+    // 设置跳转到回调函数
+    void **ppHookStubFuncAddr = pNewShellcode + (pHookstubFunctionAddrArm32 - pShellcodeStartArm32);
+    *ppHookStubFuncAddr = pstInlineHookInfo->onCallBack;
+
+    // 填充回调函数返回后跳转的函数地址（构造返回到hook点的函数）
+    pstInlineHookInfo->ppOriginalFuncAddr = pNewShellcode + (pOldFunctionAddrArm32 - pShellcodeStartArm32);
+
+    // 设置shellcode地址到hookinfo中，用于构造hook点的跳转
+    pstInlineHookInfo->pStubAddr = pNewShellcode;
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
+
+int BuildJumpInstArm32(void *pCurrentAddress, void *pJumpAddress)
+{
+    int iRet = -1;
+    
+    if (pCurrentAddress == NULL || pJumpAddress == NULL) {
+        LOGE("params is NULL.\n");
+        goto err;
+    }
+
+    // ldr pc, [pc, #-4] 对应的机器码为 0xE51FF004
+    // addr 要跳转的地址
+    unsigned char ucLdrOpcodes[8] = {0x04, 0xf0, 0x1f, 0xe5};
+    memcpy(ucLdrOpcodes + 4, &pJumpAddress, 4);
+
+    // 将构造好的跳转指令写入pCurrentAddress，并刷缓存
+    memcpy(pCurrentAddress, ucLdrOpcodes, 8);
+    cacheflush(*((char *)pCurrentAddress), 8, 0);
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
+int BuildJumpBackFuncArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+    int iRet = -1;
+    void *fixOpcodes = MAP_FAILED;
+    int fixLength = -1;
+    
+    if (pstInlineHookInfo == NULL) {
+        LOGE("pstInlineHookInfo is NULL.\n");
+        goto err;
+    }
+
+    fixOpcodes = mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC,  \
+            MAP_ANONYMOUS|MAP_PRIVATE, 0, 0);
+    if (fixOpcodes == MAP_FAILED) {
+        LOGE("BuildJumpBackFuncArm32 mmap failed.\n");
+        goto err;
+    }
+    
+    void *pOrigionalFunction = malloc(200);
+    if (pOrigionalFunction == NULL) {
+        LOGE("pOrigionalFunction malloc failed.\n");
+        goto err;
+    }
+
+    pstInlineHookInfo->pNewEntryForOriginalFuncAddr = pOrigionalFunction;
+    if (ChangePageAttr(pOrigionalFunction, 200, PROT_READ|PROT_WRITE|PROT_EXEC)) {
+        LOGE("change new entry for origin function address failed.\n");
+        goto err;
+    }
+
+    fixLength = fixPCOpcodeArm(fixOpcodes, pstInlineHookInfo);
+    memcpy(pOrigionalFunction, fixOpcodes, fixLength);
+
+    if (BuildJumpInstArm32(pOrigionalFunction + fixLength, pstInlineHookInfo->pHookAddr + pstInlineHookInfo->backupLength)) {
+        LOGE("BuildJumpInstArm32 failed.\n");
+        goto err;
+    }
+
+    // 填充shellcode里stub的回调地址
+    *(pstInlineHookInfo->ppOriginalFuncAddr) = pOrigionalFunction;
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
+int BackupOpcodeArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+    int iRet = -1;
+    uint32_t *pCurrentOpcode = pstInlineHookInfo->pHookAddr;
+    int i = 0;
+
+    if (pstInlineHookInfo == NULL) {
+        LOGE("pstInlineHookInfo is NULL\n");
+        goto err;
+    }
+
+    for (i = 0; i < BACKUP_INST_MAX; i++) {
+        pstInlineHookInfo->backupFixLengthArray[i] = -1;
+    }
+
+    pstInlineHookInfo->backupLength = 8;
+    memcpy(pstInlineHookInfo->backupOpcodes, pstInlineHookInfo->pHookAddr, pstInlineHookInfo->backupLength);
+
+    for (i = 0; i < 2; i++) {
+        LOGI("Fix length: %d\n", lengthFixArm32(*currentOpcode));
+        pstInlineHookInfo->backupFixLengthArray[i] = lengthFixArm32(*currentOpcode);
+        currentOpcode++;
+    }
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
+int InitHookArm32(STInlineHookInfo *pstInlineHookInfo)
+{
+    int iRet = -1;
+
+    if (BackupOpcodeArm32(pstInlineHookInfo)) {
+        LOGE("BackupOpcodeArm32 err.\n");
+        goto err;
+    }
+
+    if (BuildStubArm32(pstInlineHookInfo)) {
+        LOGE("BuildStubArm32 err.\n");
+        goto err;
+    }
+
+    if (BuildJumpBackFuncArm32(pstInlineHookInfo)) {
+        LOGE("BuildJumpBackFuncArm32 err.\n");
+        goto err;
+    }
+
+    iRet = 0;
+err:
+    return iRet;
+}
+
