@@ -90,7 +90,7 @@ int BuildStubArm32(STInlineHookInfo *pstInlineHookInfo)
     void **ppHookStubFuncAddr = pNewShellcode + (pHookstubFunctionAddrArm32 - pShellcodeStartArm32);
     *ppHookStubFuncAddr = pstInlineHookInfo->onCallBack;
 
-    // 填充回调函数返回后跳转的函数地址（构造返回到hook点的函数）
+    // 保存回调函数返回后跳转的函数地址（构造返回到hook点的函数）,接下来会填充这个地址
     pstInlineHookInfo->ppOriginalFuncAddr = pNewShellcode + (pOriginalFunctionAddrArm32 - pShellcodeStartArm32);
 
     // 设置shellcode地址到hookinfo中，用于构造hook点的跳转
@@ -100,7 +100,6 @@ int BuildStubArm32(STInlineHookInfo *pstInlineHookInfo)
 err:
     return iRet;
 }
-
 
 int BuildJumpInstArm32(void *pCurrentAddress, void *pJumpAddress)
 {
@@ -143,28 +142,29 @@ int BuildJumpBackFuncArm32(STInlineHookInfo *pstInlineHookInfo)
         goto err;
     }
     
-    void *pOrigionalFunction = malloc(200);
-    if (pOrigionalFunction == NULL) {
-        LOGE("pOrigionalFunction malloc failed.\n");
+#define B_ORIGIONNAL_FUNC_LENGTH    200
+    void *pJumpTopOrigionalFunction = malloc(B_ORIGIONNAL_FUNC_LENGTH);
+    if (pJumpTopOrigionalFunction == NULL) {
+        LOGE("pJumpTopOrigionalFunction malloc failed.\n");
         goto err;
     }
 
-    pstInlineHookInfo->pNewEntryForOriginalFuncAddr = pOrigionalFunction;
-    if (ChangePageAttr(pOrigionalFunction, 200, PROT_READ|PROT_WRITE|PROT_EXEC)) {
+    pstInlineHookInfo->pNewEntryForOriginalFuncAddr = pJumpTopOrigionalFunction;
+    if (ChangePageAttr(pJumpTopOrigionalFunction, B_ORIGIONNAL_FUNC_LENGTH, PROT_READ|PROT_WRITE|PROT_EXEC)) {
         LOGE("change new entry for origin function address failed.\n");
         goto err;
     }
 
-    fixLength = fixPCOpcodeArm(pFixOpcodes, pstInlineHookInfo);
-    memcpy(pOrigionalFunction, pFixOpcodes, fixLength);
+    fixLength = FixPCOpcodeArm32(pFixOpcodes, pstInlineHookInfo);
+    memcpy(pJumpTopOrigionalFunction, pFixOpcodes, fixLength);
 
-    if (BuildJumpInstArm32(pOrigionalFunction + fixLength, pstInlineHookInfo->pHookAddr + pstInlineHookInfo->backupLength)) {
+    if (BuildJumpInstArm32(pJumpTopOrigionalFunction + fixLength, pstInlineHookInfo->pHookAddr + pstInlineHookInfo->backupLength)) {
         LOGE("BuildJumpInstArm32 failed.\n");
         goto err;
     }
 
     // 填充shellcode里stub的回调地址
-    *(pstInlineHookInfo->ppOriginalFuncAddr) = pOrigionalFunction;
+    *(pstInlineHookInfo->ppOriginalFuncAddr) = pJumpTopOrigionalFunction;
 
     iRet = 0;
 err:
@@ -174,7 +174,7 @@ err:
 int BackupOpcodeArm32(STInlineHookInfo *pstInlineHookInfo)
 {
     int iRet = -1;
-    uint32_t *pCurrentOpcode = pstInlineHookInfo->pHookAddr;
+    uint32_t *pCurrentInst = pstInlineHookInfo->pHookAddr;
     int i = 0;
 
     if (pstInlineHookInfo == NULL) {
@@ -186,13 +186,15 @@ int BackupOpcodeArm32(STInlineHookInfo *pstInlineHookInfo)
         pstInlineHookInfo->backupFixLengthArray[i] = -1;
     }
 
-    pstInlineHookInfo->backupLength = 8;
-    memcpy(pstInlineHookInfo->backupOpcodes, pstInlineHookInfo->pHookAddr, pstInlineHookInfo->backupLength);
+#define BACKUP_LENGTH_ARM32 8
+#define INST_LENGTH_ARM32 4
+    pstInlineHookInfo->backupLength = BACKUP_LENGTH_ARM32;    // arm32 需要两条指令实现跳转到stub
+    memcpy(pstInlineHookInfo->backupOpcodes, pstInlineHookInfo->pHookAddr, pstInlineHookInfo->backupLength);    // 保存hook目标处原指令
 
-    for (i = 0; i < 2; i++) {
-        LOGI("Fix length: %d\n", lengthFixArm32(*pCurrentOpcode));
-        pstInlineHookInfo->backupFixLengthArray[i] = lengthFixArm32(*pCurrentOpcode);
-        pCurrentOpcode++;
+    for (i = 0; i < BACKUP_LENGTH_ARM32 / INST_LENGTH_ARM32; i++) {
+        LOGI("Fix length: %d\n", LengthOfFixArm32(*pCurrentInst));
+        pstInlineHookInfo->backupFixLengthArray[i] = LengthOfFixArm32(*pCurrentInst);   // 判断这条指令是否需要修复，如果需要修复，返回需要修复指令的长度
+        pCurrentInst++;
     }
 
     iRet = 0;
@@ -204,11 +206,13 @@ int InitHookArm32(STInlineHookInfo *pstInlineHookInfo)
 {
     int iRet = -1;
 
+    // 备份需要覆盖的指令，并判断这些指令是否需要修复
     if (BackupOpcodeArm32(pstInlineHookInfo)) {
         LOGE("BackupOpcodeArm32 err.\n");
         goto err;
     }
 
+    // 构造stub
     if (BuildStubArm32(pstInlineHookInfo)) {
         LOGE("BuildStubArm32 err.\n");
         goto err;
@@ -257,85 +261,85 @@ int LengthOfFixArm32(uint32_t uiOpcode)
     }    
 }
 
-static int GetTypeOfInstArm32(uint32_t uiInst)
+static int GetTypeOfInstArm32(uint32_t inst)
 {
-    LOGI("GetTypeOfInstArm32 : %x", uiInst);
-	if ((uiInst & 0xFE000000) == 0xFA000000) {
+    LOGI("GetTypeOfInstArm32 : %x.\n", inst);
+	if ((inst & 0xFE000000) == 0xFA000000) {
 		return BLX_ARM;
 	}
-	if ((uiInst & 0xF000000) == 0xB000000) {
+	if ((inst & 0xF000000) == 0xB000000) {
 		return BL_ARM;
 	}
-	if ((uiInst & 0xFE000000) == 0x0A000000) {
+	if ((inst & 0xFE000000) == 0x0A000000) {
 		return BEQ_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x1A000000) {
+    if ((inst & 0xFE000000) == 0x1A000000) {
 		return BNE_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x2A000000) {
+    if ((inst & 0xFE000000) == 0x2A000000) {
 		return BCS_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x3A000000) {
+    if ((inst & 0xFE000000) == 0x3A000000) {
 		return BCC_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x4A000000) {
+    if ((inst & 0xFE000000) == 0x4A000000) {
 		return BMI_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x5A000000) {
+    if ((inst & 0xFE000000) == 0x5A000000) {
 		return BPL_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x6A000000) {
+    if ((inst & 0xFE000000) == 0x6A000000) {
 		return BVS_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x7A000000) {
+    if ((inst & 0xFE000000) == 0x7A000000) {
 		return BVC_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x8A000000) {
+    if ((inst & 0xFE000000) == 0x8A000000) {
 		return BHI_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0x9A000000) {
+    if ((inst & 0xFE000000) == 0x9A000000) {
 		return BLS_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0xAA000000) {
+    if ((inst & 0xFE000000) == 0xAA000000) {
 		return BGE_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0xBA000000) {
+    if ((inst & 0xFE000000) == 0xBA000000) {
 		return BLT_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0xCA000000) {
+    if ((inst & 0xFE000000) == 0xCA000000) {
 		return BGT_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0xDA000000) {
+    if ((inst & 0xFE000000) == 0xDA000000) {
 		return BLE_ARM;
 	}
-    if ((uiInst & 0xFE000000) == 0xEA000000) {
+    if ((inst & 0xFE000000) == 0xEA000000) {
 		return B_ARM;
 	}
     
     /*
-    if ((uiInst & 0xFF000000) == 0xFA000000) {
+    if ((inst & 0xFF000000) == 0xFA000000) {
 		return BLX_ARM;
 	} *//*
-    if ((uiInst & 0xF000000) == 0xA000000) {
+    if ((inst & 0xF000000) == 0xA000000) {
 		return B_ARM;
 	}*/
     
-	if ((uiInst & 0xFF000FF) == 0x120001F) {
+	if ((inst & 0xFF000FF) == 0x120001F) {
 		return BX_ARM;
 	}
-	if ((uiInst & 0xFEF0010) == 0x8F0000) {
+	if ((inst & 0xFEF0010) == 0x8F0000) {
 		return ADD_ARM;
 	}
-	if ((uiInst & 0xFFF0000) == 0x28F0000) {
+	if ((inst & 0xFFF0000) == 0x28F0000) {
 		return ADR1_ARM;
 	}
-	if ((uiInst & 0xFFF0000) == 0x24F0000) {
+	if ((inst & 0xFFF0000) == 0x24F0000) {
 		return ADR2_ARM;		
 	}
-	if ((uiInst & 0xE5F0000) == 0x41F0000) {
+	if ((inst & 0xE5F0000) == 0x41F0000) {
 		return LDR_ARM;
 	}
-	if ((uiInst & 0xFE00FFF) == 0x1A0000F) {
+	if ((inst & 0xFE00FFF) == 0x1A0000F) {
 		return MOV_ARM;
 	}
 	return UNDEFINE;
@@ -343,42 +347,35 @@ static int GetTypeOfInstArm32(uint32_t uiInst)
 
 int FixPCOpcodeArm32(void *pFixOpcodes , STInlineHookInfo* pstInlineHook)
 {
-    uint32_t pc;
-    uint32_t lr;
-    int backUpPos = 0;
+    uint32_t uHookTargetPC;
+    uint32_t uHookTargetLR;
+    int backupPos = 0;
     int fixPos = 0;
     int offset = 0;
-    //int isConditionBcode = 0;
-    uint32_t *currentOpcode;
-    uint32_t tmpFixOpcodes[40]; //对于每条PC命令的修复指令都将暂时保存在这里。
-    //uint32_t tmpBcodeFix;
-    //uint32_t tmpBcodeX = 0;
+    uint32_t *uCurrentInst;
+    uint32_t tmpFixOpcodes[40];     //对于每条PC命令的修复指令都将暂时保存在这里。
 
-    LOGI("Fixing Arm !!!!!!!");
+    LOGI("Fixing Arm32 opcode .\n");
 
-    currentOpcode = pstInlineHook->backupOpcodes + sizeof(uint8_t)*backUpPos;
-    LOGI("sizeof(uint8_t) : %D", sizeof(uint8_t));
+    uCurrentInst = pstInlineHook->backupOpcodes + backupPos;
 
-    pc = pstInlineHook->pHookAddr + 8; //pc变量用于保存原本指令执行时的pc值
-    lr = pstInlineHook->pHookAddr + pstInlineHook->backupLength;
+    uHookTargetPC = pstInlineHook->pHookAddr + 8; //pc变量用于保存原本指令执行时的pc值
+    uHookTargetLR = pstInlineHook->pHookAddr + pstInlineHook->backupLength;
 
-    if(pstInlineHook == NULL)
-    {
-        LOGI("pstInlineHook is null");
+    if(pstInlineHook == NULL) {
+        LOGE("pstInlineHook is null.\n");
     }
 
-    while(1) // 在这个循环中，每次都处理一个thumb命令
-    {
-        LOGI("-------------START----------------");
-        LOGI("currentOpcode is %x",*currentOpcode);
+    while(1) {
+        LOGI("uCurrentInst is %x",*uCurrentInst);
+        memset(tmpFixOpcodes, 0x0, sizeof(tmpFixOpcodes));
         
-        offset = fixPCOpcodeArm32(pc, lr, *currentOpcode, tmpFixOpcodes, pstInlineHook);
-        //LOGI("isConditionBcode : %d", isConditionBcode);
+        offset = _FixPCOpcodeArm32(uHookTargetPC, uHookTargetLR, *uCurrentInst, tmpFixOpcodes, pstInlineHook);
         LOGI("offset : %d", offset);
         memcpy(pFixOpcodes+fixPos, tmpFixOpcodes, offset);
         /*
         if (isConditionBcode==1) { // the first code is B??
-            if (backUpPos == 4) { // the second has just been processed
+            if (backupPos == 4) { // the second has just been processed
                 LOGI("Fix the first b_code.");
                 LOGI("offset : %d",offset);
                 tmpBcodeFix += (offset/4 +1);
@@ -404,28 +401,28 @@ int FixPCOpcodeArm32(void *pFixOpcodes , STInlineHookInfo* pstInlineHook)
 
                 offset += 4*4;
             }
-            else if (backUpPos == 0) { //save the first B code
-                tmpBcodeFix = (*currentOpcode & 0xFE000000);
-                tmpBcodeX = (*currentOpcode & 0xFFFFFF) << 2; // x*4
+            else if (backupPos == 0) { //save the first B code
+                tmpBcodeFix = (*uCurrentInst & 0xFE000000);
+                tmpBcodeX = (*uCurrentInst & 0xFFFFFF) << 2; // x*4
                 LOGI("tmpBcodeX : %x", tmpBcodeX);
                 tmpBcodeX = tmpBcodeX + 8 + pstInlineHook->pHookAddr;
             }
         }*/
         
-        backUpPos += 4; //arm32的话下一次取后面4 byte偏移的指令
-        pc += sizeof(uint32_t);
+        backupPos += 4; //arm32的话下一次取后面4 byte偏移的指令
+        uHookTargetPC += sizeof(uint32_t);
 
         fixPos += offset;
         LOGI("fixPos : %d", fixPos);
         LOGI("--------------END-----------------");
 
-        if (backUpPos < pstInlineHook->backupLength)
+        if (backupPos < pstInlineHook->backupLength)
         {
-            currentOpcode = pstInlineHook->backupOpcodes + sizeof(uint8_t)*backUpPos;
+            uCurrentInst = pstInlineHook->backupOpcodes + sizeof(uint8_t)*backupPos;
         }
         else{
             LOGI("pstInlineHook->backupLength : %d", pstInlineHook->backupLength);
-            LOGI("backUpPos : %d",backUpPos);
+            LOGI("backupPos : %d",backupPos);
             LOGI("fixPos : %d", fixPos);
             LOGI("Fix finish !");
             return fixPos;
@@ -441,18 +438,17 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
 {
     int type;
 	//int offset;
-    int trampoline_pos;
-    uint32_t new_entry_addr = (uint32_t)pstInlineHook->pNewEntryForOriginalFuncAddr;
-    LOGI("new_entry_addr : %x",new_entry_addr);
+    int iTrampolinePos = 0;
+    uint32_t uNewEntryAddr = (uint32_t)pstInlineHook->pNewEntryForOriginalFuncAddr;
+    LOGI("uNewEntryAddr : %x",uNewEntryAddr);
 
-    trampoline_pos = 0;
-    LOGI("THE ARM32 OPCODE IS %x",instruction);
+    LOGI("THE ARM32 OPCODE IS %x. \n",instruction);
     type = GetTypeOfInstArm32(instruction);     //判断该arm指令的种类
     if (type == BEQ_ARM || type == BNE_ARM || type == BCS_ARM || type == BCC_ARM || 
         type == BMI_ARM || type == BPL_ARM || type == BVS_ARM || type == BVC_ARM || 
         type == BHI_ARM || type == BLS_ARM || type == BGE_ARM || type == BLT_ARM || 
         type == BGT_ARM || type == BLE_ARM) {
-        LOGI("BEQ_ARM BNE_ARM BCS_ARM BCC_ARM BMI_ARM BPL_ARM BVS_ARM BVC_ARM BHI_ARM BLS_ARM BGE_ARM BLT_ARM BGT_ARM BLE_ARM");
+        LOGI("BEQ_ARM BNE_ARM BCS_ARM BCC_ARM BMI_ARM BPL_ARM BVS_ARM BVC_ARM BHI_ARM BLS_ARM BGE_ARM BLT_ARM BGT_ARM BLE_ARM .\n");
 		uint32_t x;
 		int top_bit;
 		uint32_t imm32;
@@ -460,13 +456,8 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
 //        uint32_t flag=0;
         //uint32_t ins_info;
 
-        pTrampolineInstructions[trampoline_pos++] = (uint32_t)(((instruction & 0xFE000000)+1)^0x10000000);
-        pTrampolineInstructions[trampoline_pos++] = 0xE51FF004; // LDR PC, [PC, #-4]
-/*        flag = (uint32_t)(instruction & 0xFFFFFF);
-        if (flag == 0xffffff) {
-            LOGI("BACKUP TO BACKUP !");
-
-        }*/
+        pTrampolineInstructions[iTrampolinePos++] = (uint32_t)(((instruction & 0xFE000000)+1)^0x10000000);
+        pTrampolineInstructions[iTrampolinePos++] = 0xE51FF004; // LDR PC, [PC, #-4]
 
         x = (instruction & 0xFFFFFF) << 2; // 4*x
         top_bit = x >> 25;
@@ -477,42 +468,42 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
             int offset_in_backup;
             int cnt = (value - (uint32_t)pstInlineHook->pHookAddr)/4;
             if(cnt==0){
-                value = new_entry_addr;
+                value = uNewEntryAddr;
             }else if(cnt==1){
-                value = new_entry_addr + pstInlineHook->backupFixLengthArray[0];
+                value = uNewEntryAddr + pstInlineHook->backupFixLengthArray[0];
             }else{
                 LOGI("cnt !=1or0, something wrong !");
             }
-            //value = new_entry_addr+12;
+            //value = uNewEntryAddr+12;
         }
-        pTrampolineInstructions[trampoline_pos++] = value; // hook_addr + 12 + 4*x
+        pTrampolineInstructions[iTrampolinePos++] = value; // hook_addr + 12 + 4*x
 
         /*
-        if (backUpPos == 0) { //the B_code is the first backup code
+        if (backupPos == 0) { //the B_code is the first backup code
             *isConditionBcode = 1;
             //ins_info = (uint32_t)(instruction & 0xF0000000)>>28;
             LOGI("INS_INFO : %x", ins_info);
 
-            pTrampolineInstructions[trampoline_pos++] = (uint32_t)(((instruction & 0xFE000000)+1)^0x10000000); //B??_ARM 16 -> 0X?A000002
+            pTrampolineInstructions[iTrampolinePos++] = (uint32_t)(((instruction & 0xFE000000)+1)^0x10000000); //B??_ARM 16 -> 0X?A000002
             LOGI("B code on the first.");
             LOGI("%x",(uint32_t)(instruction & 0xFE000000));
         }
-        else if (backUpPos == 4) { //THE B_code is the second backup code
+        else if (backupPos == 4) { //THE B_code is the second backup code
             LOGI("B code on the second.");
-            pTrampolineInstructions[trampoline_pos++] = (uint32_t)(instruction & 0xFE000000)+1; //B??_ARM 12 -> 0X?A000001
+            pTrampolineInstructions[iTrampolinePos++] = (uint32_t)(instruction & 0xFE000000)+1; //B??_ARM 12 -> 0X?A000001
             LOGI("%x",(uint32_t)(instruction & 0xFE000000)+1);
 
-            pTrampolineInstructions[trampoline_pos++] = 0xE51FF004; // LDR PC, [PC, #-4]
+            pTrampolineInstructions[iTrampolinePos++] = 0xE51FF004; // LDR PC, [PC, #-4]
             value = pc-4;
-            pTrampolineInstructions[trampoline_pos++] = value; // hook_addr + 8
+            pTrampolineInstructions[iTrampolinePos++] = value; // hook_addr + 8
 
-            pTrampolineInstructions[trampoline_pos++] = 0xE51FF004; // LDR PC, [PC, #-4]
+            pTrampolineInstructions[iTrampolinePos++] = 0xE51FF004; // LDR PC, [PC, #-4]
             x = (instruction & 0xFFFFFF) << 2; // 4*x
             value = x + pc;
-            pTrampolineInstructions[trampoline_pos++] = value; // hook_addr + 12 + 4*x
+            pTrampolineInstructions[iTrampolinePos++] = value; // hook_addr + 12 + 4*x
         }*/
 
-        return 4*trampoline_pos;
+        return 4*iTrampolinePos;
     }
 	if (type == BLX_ARM || type == BL_ARM || type == B_ARM || type == BX_ARM) {
         LOGI("BLX_ARM BL_ARM B_ARM BX_ARM");
@@ -524,9 +515,9 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
 
 		if (type == BLX_ARM || type == BL_ARM) {
             LOGI("BLX_ARM BL_ARM");
-			pTrampolineInstructions[trampoline_pos++] = 0xE28FE004;	// ADD LR, PC, #4
+			pTrampolineInstructions[iTrampolinePos++] = 0xE28FE004;	// ADD LR, PC, #4
 		}
-		pTrampolineInstructions[trampoline_pos++] = 0xE51FF004;  	// LDR PC, [PC, #-4]
+		pTrampolineInstructions[iTrampolinePos++] = 0xE51FF004;  	// LDR PC, [PC, #-4]
 		if (type == BLX_ARM) {
             LOGI("BLX_ARM");
 			x = ((instruction & 0xFFFFFF) << 2) | ((instruction & 0x1000000) >> 23); //BLX_ARM
@@ -562,10 +553,10 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
             LOGI("value : %d", value);
             if(isTargetAddrInBackup(value, (uint32_t)pstInlineHook->pHookAddr, pstInlineHook->backupLength)){
                 LOGI("Backup to backup!");
-                value = new_entry_addr+4*(trampoline_pos+1);
+                value = uNewEntryAddr+4*(iTrampolinePos+1);
             }
 		}
-		pTrampolineInstructions[trampoline_pos++] = value;
+		pTrampolineInstructions[iTrampolinePos++] = value;
 		
 	}
 	else if (type == ADD_ARM) {
@@ -583,12 +574,12 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
 			}
 		}
 		
-		pTrampolineInstructions[trampoline_pos++] = 0xE52D0004 | (r << 12);	// PUSH {Rr}
-		pTrampolineInstructions[trampoline_pos++] = 0xE59F0008 | (r << 12);	// LDR Rr, [PC, #8]
-		pTrampolineInstructions[trampoline_pos++] = (instruction & 0xFFF0FFFF) | (r << 16);
-		pTrampolineInstructions[trampoline_pos++] = 0xE49D0004 | (r << 12);	// POP {Rr}
-		pTrampolineInstructions[trampoline_pos++] = 0xE28FF000;	// ADD PC, PC MFK!这明明是ADD PC, PC, #0好么！
-		pTrampolineInstructions[trampoline_pos++] = pc;
+		pTrampolineInstructions[iTrampolinePos++] = 0xE52D0004 | (r << 12);	// PUSH {Rr}
+		pTrampolineInstructions[iTrampolinePos++] = 0xE59F0008 | (r << 12);	// LDR Rr, [PC, #8]
+		pTrampolineInstructions[iTrampolinePos++] = (instruction & 0xFFF0FFFF) | (r << 16);
+		pTrampolineInstructions[iTrampolinePos++] = 0xE49D0004 | (r << 12);	// POP {Rr}
+		pTrampolineInstructions[iTrampolinePos++] = 0xE28FF000;	// ADD PC, PC MFK!这明明是ADD PC, PC, #0好么！
+		pTrampolineInstructions[iTrampolinePos++] = pc;
 	}
 	else if (type == ADR1_ARM || type == ADR2_ARM || type == LDR_ARM || type == MOV_ARM) {
         LOGI("ADR1_ARM ADR2_ARM LDR_ARM MOV_ARM");
@@ -628,20 +619,20 @@ int _FixPCOpcodeArm32(uint32_t pc, uint32_t lr, uint32_t instruction, uint32_t *
 			value = pc;
 		}
 			
-		pTrampolineInstructions[trampoline_pos++] = 0xE51F0000 | (r << 12);	// LDR Rr, [PC]
-		pTrampolineInstructions[trampoline_pos++] = 0xE28FF000;	// ADD PC, PC
-		pTrampolineInstructions[trampoline_pos++] = value;
+		pTrampolineInstructions[iTrampolinePos++] = 0xE51F0000 | (r << 12);	// LDR Rr, [PC]
+		pTrampolineInstructions[iTrampolinePos++] = 0xE28FF000;	// ADD PC, PC
+		pTrampolineInstructions[iTrampolinePos++] = value;
 	}
 	else {
         LOGI("OTHER_ARM");
-		pTrampolineInstructions[trampoline_pos++] = instruction;
-        return 4*trampoline_pos;
+		pTrampolineInstructions[iTrampolinePos++] = instruction;
+        return 4*iTrampolinePos;
 	}
 	//pc += sizeof(uint32_t);
 	
-	//pTrampolineInstructions[trampoline_pos++] = 0xe51ff004;	// LDR PC, [PC, #-4]
-	//pTrampolineInstructions[trampoline_pos++] = lr;
-    return 4*trampoline_pos;
+	//pTrampolineInstructions[iTrampolinePos++] = 0xe51ff004;	// LDR PC, [PC, #-4]
+	//pTrampolineInstructions[iTrampolinePos++] = lr;
+    return 4*iTrampolinePos;
 }
 
 

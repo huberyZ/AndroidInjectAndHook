@@ -11,7 +11,7 @@
 
 int InlineHook(void *pHookAddr, void (*pCallBackFunc)(PT_REGS *), int iInsnMode);
 
-//int _IsTargetAddrInBackup(unsigned long ulTargetAddr, unsigned longulHookAddr, int iBackupLength);
+//int IsTargetAddrInBackup(unsigned long ulTargetAddr, unsigned longulHookAddr, int iBackupLength);
 /*
  *	@pHookAddr 要hook的目标地址
  *	@pCallBackFunc 要跳转到的自定义的函数地址
@@ -54,7 +54,7 @@ out:
 	return iRet;
 }
 
-int _IsTargetAddrInBackup(unsigned long ulTargetAddr, unsigned long ulHookAddr, int iBackupLength)
+int IsTargetAddrInBackup(unsigned long ulTargetAddr, unsigned long ulHookAddr, int iBackupLength)
 {
     if ((ulTargetAddr <= ulHookAddr + iBackupLength) && (ulTargetAddr >= ulHookAddr)) {
         return 0;

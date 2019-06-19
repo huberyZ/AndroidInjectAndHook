@@ -182,12 +182,12 @@ enum INSTRUCTION_TYPE {
 typedef struct InlineHookInfo {
 	void *pHookAddr;		// 要hook的地址
 	void *pStubAddr;		// 跳转的桩的地址
-	void **ppOriginalFuncAddr;	// 构造返回到hook点的函数地址
-    unsigned char backupOpcodes[BACKUP_OPCODE_MAX_LEN];      
-    int backupLength;
-    int backupFixLengthArray[BACKUP_FIX_INST_MAX];
-	void (*onCallBack)(PT_REGS *);
-    uint32_t *pNewEntryForOriginalFuncAddr;
+	void **ppOriginalFuncAddr;	//保存 构造返回到hook点的函数地址
+    unsigned char backupOpcodes[BACKUP_OPCODE_MAX_LEN];  // 备份原指令    
+    int backupLength;   // 跳转到桩代码所需要的跳转指令长度（备份原指令长度）
+    int backupFixLengthArray[BACKUP_FIX_INST_MAX];     // 备份的原指令如果是跳转指令， 则需要修复，这里保存修复指令需要的长度
+	void (*onCallBack)(PT_REGS *);  // hook后调用的外部函数
+    uint32_t *pNewEntryForOriginalFuncAddr;     // 构造返回到hook点的函数指针
 } STInlineHookInfo;
 
 typedef struct HookTargetInfo {
