@@ -7,7 +7,11 @@
 ================================================================*/
 
 #include "Ihook.h"
-#include "InlineHookArm32.h"
+#if ARM32
+#include "arm32/InlineHookArm32.h"
+#else
+#include "arm64/InlineHookArm64.h"
+#endif
 
 int InlineHook(void *pHookAddr, void (*pCallBackFunc)(PT_REGS *), int iInsnMode);
 
@@ -33,6 +37,7 @@ int InlineHook(void *pHookAddr, void (*pCallBackFunc)(PT_REGS *), int iInstMode)
 	pstInlineHookInfo->pHookAddr = pHookAddr;
 	pstInlineHookInfo->onCallBack = pCallBackFunc;
 
+#if ARM32
 	if (iInstMode == 0) {
 		if (HookArm32(pstInlineHookInfo)) {
 			LOGE("HookArm32 failed.\n");
@@ -45,6 +50,12 @@ int InlineHook(void *pHookAddr, void (*pCallBackFunc)(PT_REGS *), int iInstMode)
 //			goto out;
 //		}
 	}
+#else
+    if (HookArm64(pstInlineHookInfo)) {
+        LOGE("HookArm64 failed.\n");
+        goto out;
+    }
+#endif
 
 	iRet = 0;
 out:
